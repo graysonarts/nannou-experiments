@@ -1,0 +1,16 @@
+[package]
+name = "daily"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nannou = "*"
+once_cell = "*"
+
+[features]
+default = ["simple"]
+
+# There are features needed to make things continualy work
+lazy_height = []
+once = []        # Only render once, and then pause
+simple = []
