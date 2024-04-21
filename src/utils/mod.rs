@@ -38,7 +38,7 @@ impl Iterator for RandomStepRange {
             next_step
         };
 
-        self.value = self.value + self.step;
+        self.value += self.step;
 
         Some((return_value, self.step))
     }
@@ -62,15 +62,19 @@ pub fn lerp_points(a: &Point2, b: &Point2, t: f32) -> Point2 {
 }
 
 pub fn captured_frame_path(app: &App, frame: &Frame) -> std::path::PathBuf {
-    // Create a path that we want to save this frame to.
-    app.project_path()
-        .expect("failed to locate `project_path`")
-        // Capture all frames to a directory called `/<path_to_nannou>/nannou/simple_capture`.
-        .join(app.exe_name().unwrap())
+    capture_directory(app)
         // Name each file after the number of the frame.
         .join(format!("{:03}", frame.nth()))
         // The extension will be PNG. We also support tiff, bmp, gif, jpeg, webp and some others.
         .with_extension("png")
+}
+
+pub fn capture_directory(app: &App) -> std::path::PathBuf {
+    let code = artcode::BatDate::default();
+    app.project_path()
+        .expect("failed to locate `project_path`")
+        .join(app.exe_name().unwrap())
+        .join(code.to_string())
 }
 
 #[cfg(test)]

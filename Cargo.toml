@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+artcode = "2.2.0"
 nannou = "*"
 once_cell = "*"
 
