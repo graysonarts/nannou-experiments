@@ -1,6 +1,7 @@
 use nannou::{
     geom::Point2,
     rand::{random_f32, random_range},
+    App, Frame,
 };
 
 pub struct RandomStepRange {
@@ -58,6 +59,18 @@ pub fn lerp_points(a: &Point2, b: &Point2, t: f32) -> Point2 {
     let y = lerp(a.y, b.y, t);
 
     Point2::new(x, y)
+}
+
+pub fn captured_frame_path(app: &App, frame: &Frame) -> std::path::PathBuf {
+    // Create a path that we want to save this frame to.
+    app.project_path()
+        .expect("failed to locate `project_path`")
+        // Capture all frames to a directory called `/<path_to_nannou>/nannou/simple_capture`.
+        .join(app.exe_name().unwrap())
+        // Name each file after the number of the frame.
+        .join(format!("{:03}", frame.nth()))
+        // The extension will be PNG. We also support tiff, bmp, gif, jpeg, webp and some others.
+        .with_extension("png")
 }
 
 #[cfg(test)]

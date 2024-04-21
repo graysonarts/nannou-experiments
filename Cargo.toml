@@ -8,7 +8,7 @@ nannou = "*"
 once_cell = "*"
 
 [features]
-default = ["simple"]
+default = []
 
 # There are features needed to make things continualy work
 lazy_height = []
