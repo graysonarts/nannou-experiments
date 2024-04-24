@@ -1,4 +1,8 @@
-use std::sync::atomic::AtomicBool;
+use std::{
+    os::unix::thread,
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    usize::MAX,
+};
 
 use nannou::{
     color::{self, Gradient, IntoColor, IntoLinSrgba},
@@ -8,9 +12,16 @@ use nannou::{
 };
 
 use crate::utils::{captured_frame_path, lerp};
-mod palettes;
 
-pub const WIDTH: u32 = 1200;
+use self::walker::{
+    moveablew::{MoveableWalker, ENERGETIC},
+    staticw::ATTRACTOR,
+    Walker,
+};
+mod palettes;
+mod walker;
+
+pub const WIDTH: u32 = 1200 / 2;
 pub const HEIGHT: u32 = WIDTH * 9 / 16;
 
 pub const STRIP_W: f32 = 100.0;
@@ -18,123 +29,78 @@ pub const STRIP_W2: f32 = STRIP_W * 2.0;
 
 pub const MAX_FREQ: f32 = 10.0;
 
+pub const MAX_PATH_LENGTH: usize = 1000;
+pub const MIN_WALKERS: usize = 3;
+pub const MAX_WALKERS: usize = 50;
+
 pub struct Model {
-    frequency: f32,
-    phases: Vec<f32>,
-    speeds: Vec<f32>,
-    palette: Vec<Hsl>,
+    walkers: Vec<Walker>,
+    ticks: u64,
     capture_next_frame: AtomicBool,
+}
+
+static RENDER_TICKS: AtomicU64 = AtomicU64::new(0);
+
+fn should_render(model: &Model) -> bool {
+    let render_ticks = RENDER_TICKS.load(Ordering::SeqCst);
+    let should_render = model.ticks != render_ticks;
+    if should_render {
+        RENDER_TICKS.fetch_add(model.ticks - render_ticks, Ordering::SeqCst);
+    }
+    should_render
+}
+
+fn render(model: &mut Model) {
+    model.ticks += 1;
 }
 
 impl Default for Model {
     fn default() -> Self {
-        let frequency = Self::random();
-        let palette = Self::new_palette(frequency as usize);
-        let phases = Self::phases(&palette);
-        let speeds = Self::speeds(&palette);
-
-        Self {
-            phases,
-            speeds,
-            frequency,
-            palette,
+        let mut ret = Self {
+            ticks: 10,
+            walkers: Vec::new(),
             capture_next_frame: AtomicBool::new(false),
-        }
+        };
+        ret.reset(random_range::<usize>(MIN_WALKERS, MAX_WALKERS));
+
+        ret
     }
 }
 
 impl Model {
-    fn random() -> f32 {
-        (random_f32() * MAX_FREQ / 2.0 + MAX_FREQ / 2.0).floor()
+    fn reset(&mut self, size: usize) {
+        let palette = Self::new_palette(size);
+        let mut walkers: Vec<_> = palette
+            .iter()
+            .enumerate()
+            .map(|(idx, color)| {
+                Walker::Moveable(MoveableWalker::new(
+                    color.into_lin_srgba(),
+                    Point2::new(
+                        random_range(0.0, WIDTH as f32),
+                        // random_range(-(HEIGHT as f32 / 2.0), HEIGHT as f32 / 2.0),
+                        map_range(idx, 0, size, HEIGHT as f32 / -2.0, HEIGHT as f32 / 2.0),
+                    ),
+                    Some(Vec2::new(random_range(-1.0, 1.0), random_range(-1.0, 1.0))),
+                ))
+            })
+            .collect();
+        // walkers.push(ATTRACTOR.clone());
+        self.walkers = walkers;
     }
-
     fn new_palette(count: usize) -> Vec<Hsl> {
         let palette = palettes::split_complement();
         palette.take(count).collect()
     }
-
-    fn phases(palette: &[Hsl]) -> Vec<f32> {
-        palette.iter().map(|_| random_f32()).collect()
-    }
-
-    fn speeds(palette: &[Hsl]) -> Vec<f32> {
-        palette.iter().map(|_| random_f32() / 100.0).collect()
-    }
 }
 
 impl Model {
-    pub fn draw(&self, app: &App, draw: &Draw) {
-        (0..2000).map(|i| (i as f32) / 2000.0).for_each(|t| {
-            let base = t * self.frequency * TAU;
-            let x = lerp(0.0, WIDTH as f32, t);
-            // TODO: Generate Palette
-            self.palette
-                .iter()
-                .zip(self.phases.iter())
-                .enumerate()
-                .for_each(|(idx, (color, phase))| {
-                    let y = base.sin() * 100.0 * (t + *phase).cos();
-                    let offset = calc_offset(self.palette.len(), idx);
-                    // let color = Hsla::new(
-                    //     color.hue,
-                    //     color.saturation,
-                    //     color.lightness,
-                    //     (0.5 + (t * self.frequency * TAU + *phase).cos().abs()).clamp(0.25, 0.75),
-                    // );
-                    Model::draw_section(
-                        draw,
-                        idx,
-                        base.cos() - *phase,
-                        x,
-                        y + offset,
-                        color.into_lin_srgba(),
-                    );
-                });
-        });
-
-        #[cfg(debug)]
-        {
-            self.palette.iter().enumerate().for_each(|(idx, _)| {
-                let x = WIDTH as f32 / 2.0;
-                let y = calc_offset(self.palette.len(), idx);
-
-                draw.text(&format!("{}", idx))
-                    .x_y(x, y)
-                    .font_size(24)
-                    .color(BLACK);
-
-                draw.text(&format!("{}", idx % 2))
-                    .x_y(x + 30.0, y)
-                    .font_size(12)
-                    .color(BLACK);
-            })
-        }
-    }
-
-    fn draw_section<C>(draw: &Draw, count: usize, base: f32, x: f32, y: f32, color: C)
-    where
-        C: IntoLinSrgba<f32>,
-    {
-        let angle = base + (count as f32) * TAU / (count as f32);
-        let x = x - angle.cos() * STRIP_W2;
-        let y = y - angle.sin() * STRIP_W2;
-        draw.line()
-            .start(pt2(x, y - STRIP_W))
-            .end(pt2(x, y + STRIP_W))
-            .color(color.into_lin_srgba())
-            .stroke_weight(1.0);
-        // draw.ellipse().x_y(x, y).radius(5.0).color(RED);
-    }
-}
-
-fn calc_offset(total: usize, idx: usize) -> f32 {
-    let idx_offset = (idx as f32) - (total as f32 / 2.0);
-    (idx_offset + 0.5) * STRIP_W2
+    pub fn draw(&self, app: &App, draw: &Draw) {}
 }
 
 pub fn model(app: &App) -> Model {
     app.new_window()
-        .size(WIDTH, HEIGHT)
+        .size(WIDTH * 2, HEIGHT * 2)
         .view(view)
         .key_released(key)
         .build()
@@ -143,12 +109,10 @@ pub fn model(app: &App) -> Model {
 }
 
 fn key(_app: &App, _model: &mut Model, key: Key) {
+    render(_model);
     match key {
         Key::Space => {
-            _model.frequency = Model::random();
-            _model.palette = Model::new_palette(_model.frequency as usize);
-            _model.phases = Model::phases(&_model.palette);
-            _model.speeds = Model::speeds(&_model.palette);
+            _model.reset(random_range::<usize>(MIN_WALKERS, MAX_WALKERS));
         }
         Key::S => {
             _model
@@ -159,17 +123,35 @@ fn key(_app: &App, _model: &mut Model, key: Key) {
     }
 }
 
-pub fn update(_app: &App, model: &mut Model, _update: Update) {
-    model
-        .phases
-        .iter_mut()
-        .zip(model.speeds.iter())
-        .for_each(|(phase, speed)| {
-            *phase += speed;
-        });
+pub fn update(app: &App, model: &mut Model, update: Update) {
+    if app.elapsed_frames() % 15 != 0 {
+        return;
+    }
+
+    model.walkers.iter_mut().for_each(|walker| {
+        walker.start_rebound();
+    });
+
+    let walker_count = model.walkers.len();
+
+    for i in 0..walker_count {
+        for j in i + 1..walker_count {
+            let repel_force = model.walkers[i].rebound(&model.walkers[j]);
+
+            model.walkers[i].apply_force(repel_force);
+            model.walkers[j].apply_force(-repel_force * ENERGETIC);
+        }
+    }
+
+    model.walkers.iter_mut().for_each(|walker| {
+        walker.update(app, update);
+    });
 }
 
 pub fn view(app: &App, model: &Model, frame: Frame) {
+    let capture_frame = model
+        .capture_next_frame
+        .load(std::sync::atomic::Ordering::Relaxed);
     let draw = app
         .draw()
         .translate(vec3(-(WIDTH as f32) / 2.0, 0.0, 0.0))
@@ -177,14 +159,26 @@ pub fn view(app: &App, model: &Model, frame: Frame) {
         ;
 
     draw.background().color(WHITESMOKE);
-    model.draw(app, &draw);
+    model.walkers.iter().enumerate().for_each(|(idx, walker)| {
+        walker.draw(app, &draw, idx, !capture_frame);
+    });
+
+    // if (!capture_frame) {
+    //     let walker_count = model.walkers.len();
+
+    //     for i in 0..walker_count {
+    //         for j in i + 1..walker_count {
+    //             draw.line()
+    //                 .start(model.walkers[i].position())
+    //                 .end(model.walkers[j].position())
+    //                 .color(BLACK);
+    //         }
+    //     }
+    // }
 
     draw.to_frame(app, &frame).unwrap();
 
-    if model
-        .capture_next_frame
-        .load(std::sync::atomic::Ordering::Relaxed)
-    {
+    if capture_frame {
         model
             .capture_next_frame
             .store(false, std::sync::atomic::Ordering::Relaxed);
