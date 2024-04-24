@@ -29,7 +29,7 @@ pub const STRIP_W2: f32 = STRIP_W * 2.0;
 
 pub const MAX_FREQ: f32 = 10.0;
 
-pub const MAX_PATH_LENGTH: usize = 1000;
+pub const MAX_PATH_LENGTH: usize = 10000;
 pub const MIN_WALKERS: usize = 3;
 pub const MAX_WALKERS: usize = 50;
 
@@ -75,6 +75,7 @@ impl Model {
             .enumerate()
             .map(|(idx, color)| {
                 Walker::Moveable(MoveableWalker::new(
+                    idx,
                     color.into_lin_srgba(),
                     Point2::new(
                         random_range(0.0, WIDTH as f32),
@@ -124,9 +125,9 @@ fn key(_app: &App, _model: &mut Model, key: Key) {
 }
 
 pub fn update(app: &App, model: &mut Model, update: Update) {
-    if app.elapsed_frames() % 15 != 0 {
-        return;
-    }
+    // if app.elapsed_frames() % 60 != 0 {
+    //     return;
+    // }
 
     model.walkers.iter_mut().for_each(|walker| {
         walker.start_rebound();
@@ -138,8 +139,8 @@ pub fn update(app: &App, model: &mut Model, update: Update) {
         for j in i + 1..walker_count {
             let repel_force = model.walkers[i].rebound(&model.walkers[j]);
 
-            model.walkers[i].apply_force(repel_force);
-            model.walkers[j].apply_force(-repel_force * ENERGETIC);
+            model.walkers[i].apply_force(-repel_force);
+            model.walkers[j].apply_force(repel_force * ENERGETIC);
         }
     }
 

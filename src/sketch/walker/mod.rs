@@ -42,6 +42,13 @@ impl Walker {
         }
     }
 
+    pub fn id(&self) -> usize {
+        match self {
+            Walker::Moveable(w) => w.id,
+            Walker::Static(w) => 0,
+        }
+    }
+
     pub(crate) fn start_rebound(&mut self) {
         if let Walker::Moveable(w) = self {
             w.start_rebound();
@@ -56,18 +63,26 @@ impl Walker {
 
         let (repel_force, repel_dir) = if distance > PERSONAL_SPACE {
             (
-                // 1000.0 / distance,
-                distance,
-                (-self.velocity() + other.velocity()).normalize(),
+                1000.0 / distance,
+                // distance,
+                (self.velocity() - other.velocity()).normalize_or_zero(),
             )
         } else {
             (
-                (PERSONAL_SPACE - distance),
+                (PERSONAL_SPACE - distance) / 1000.0,
                 // distance * -1000.0,
-                (-self.velocity() + other.velocity()).normalize(),
+                -(self.velocity() - other.velocity()).normalize_or_zero(),
             )
         };
-
+        // println!(
+        //     "{} {:?} << f:{:?} d:{:?} >> {} {:?}",
+        //     self.id(),
+        //     self.position(),
+        //     repel_force,
+        //     repel_dir,
+        //     other.id(),
+        //     other.position()
+        // );
         (repel_force * repel_dir).clamp_length_max(1.0)
     }
 
